@@ -1,0 +1,17 @@
+order:
+  search:
+    bigtable:
+      instanceId: order-instance
+      table: order_versions
+    pubsub:
+      subscription-name: order-versions-persist_order-event-subscription-dev
+
+spring:
+  profiles:
+    active: log-dev
+  cloud:
+    gcp:
+      project-id: business-services-platform-dev
+
+server:
+  port: 8090
