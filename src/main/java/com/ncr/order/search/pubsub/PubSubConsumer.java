@@ -18,6 +18,7 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -100,7 +101,7 @@ public class PubSubConsumer {
 
         String rowKeyPrefix = org + ROW_KEY_DELIM + orderId + ROW_KEY_DELIM;
         String rangeStart = rowKeyPrefix + "0";
-        String rangeEnd = rowKeyPrefix + MAX_VERSIONS;
+        String rangeEnd = rowKeyPrefix + (MAX_VERSIONS + 1);
 
         Query query =
                 Query.create(tableId)
@@ -110,11 +111,10 @@ public class PubSubConsumer {
 
         short newVersion = MAX_VERSIONS;
         for (Row row : rows) {
-            log.trace("Found version: {}", row);
-
             ByteString rowKeyByteString = row.getKey();
-            String rowKey = rowKeyByteString.toString();
+            String rowKey = rowKeyByteString.toStringUtf8();
 
+            log.info("Found version with rowKey: {}", rowKey);
             String[] rowKeyTokens = rowKey.split(ROW_KEY_DELIM);
 
             String oldNewestVersionString = rowKeyTokens[2];
@@ -125,11 +125,12 @@ public class PubSubConsumer {
         }
 
         if (newVersion < 0) {
-            log.warn("Order already has {} versions, skipping... - org: {}, orderId: {}", MAX_VERSIONS, org, orderId);
+            log.warn("Order already has max {} versions, skipping... - org: {}, orderId: {}", MAX_VERSIONS, org, orderId);
             return;
         }
 
-        orderVersionData.setId(newVersion);
+        short jsonNewVersion = (short) (MAX_VERSIONS - newVersion);
+        orderVersionData.setId(jsonNewVersion);
 
         String orderVersionDataJsonString;
         try {
@@ -148,17 +149,18 @@ public class PubSubConsumer {
                         ByteString.copyFrom(COLUMN_BYTES),
                         ByteString.copyFrom(orderVersionDataJsonBytes));
 
+        log.info("calling BigTable mutateRow({}) (real version: {})...", rowKey, jsonNewVersion);
         bigtableDataClient.mutateRow(rowMutation);
     }
 
     private static Map<String, String> removeOriginalMessage(MessageHeaders headers) {
         if (headers == null) {
-            return null;
+            return Collections.emptyMap();
         } else {
             return !headers.containsKey("gcp_pubsub_original_message") ?
-                    headers.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, (v) -> v.getValue().toString()))
-                    : headers.entrySet().stream().filter((e) -> !"gcp_pubsub_original_message".equals(e.getKey()))
-                    .collect(Collectors.toMap(Map.Entry::getKey, (v) -> v.getValue().toString()));
+                    headers.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, v -> v.getValue().toString()))
+                    : headers.entrySet().stream().filter(e -> !"gcp_pubsub_original_message".equals(e.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, v -> v.getValue().toString()));
         }
     }
 }
