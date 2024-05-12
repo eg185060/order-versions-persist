@@ -34,6 +34,7 @@ public class PubSubConsumer {
     private static final String COLUMN = "v";
     private static final byte[] COLUMN_BYTES = COLUMN.getBytes();
     private static final String ROW_KEY_DELIM = "!";
+    private static final String PUBSUB_EVENT_TYPE_CREATE = "Create";
 
     public PubSubConsumer(
             ObjectMapper objectMapper,
@@ -65,7 +66,7 @@ public class PubSubConsumer {
 
         // TODO: on create set the diff to all add, because compare will show nothing
         JsonNode diffJson;
-        if ("Create".equals(orderPubSubEvent.getEventType())) {
+        if (PUBSUB_EVENT_TYPE_CREATE.equals(orderPubSubEvent.getEventType())) {
             diffJson =
                     JsonDiff.asJson(
                             orderPubSubEvent.getPreviousOrder(),
@@ -101,6 +102,8 @@ public class PubSubConsumer {
 
         String rowKeyPrefix = org + ROW_KEY_DELIM + orderId + ROW_KEY_DELIM;
         String rangeStart = rowKeyPrefix + "0";
+
+        // plus one since range query is exclusive
         String rangeEnd = rowKeyPrefix + (MAX_VERSIONS + 1);
 
         Query query =
@@ -129,6 +132,7 @@ public class PubSubConsumer {
             return;
         }
 
+        // the "human-readable" versions count up from zero even though we do the inverse in bigtable rowkey
         short jsonNewVersion = (short) (MAX_VERSIONS - newVersion);
         orderVersionData.setId(jsonNewVersion);
 
